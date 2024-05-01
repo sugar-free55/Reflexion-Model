@@ -15,12 +15,42 @@ def get_ground_truth(project: str):
     df['CodeElementId'] = df['CodeElementId'].str.split('/').str[-1]
     return df
 
-def file_embedding_algo(project: str):
+def file_embedding_algo(node_mapping: dict, edge_list_file: list):
+    """
+    Calculate the embedding of the graph
+    
+    :param node_mapping: The mapping from node number to node name (e.g. {0: 'file1.java', 1: 'file2.java', ...})
+    :param edge_list_file: The list of edges in the graph (e.g. 1->2, 2->3, ...)
+    :return: embedding of the graph (matrix)
+    """
+        
+    # create a graph
+    G = nx.Graph()
+        
+    for key in node_mapping:
+        G.add_node(key)
+        
+    # add edges to graph
+    for edge in edge_list_file:
+        try:
+            G.add_edge(edge[0], edge[1])
+        except ValueError:
+            print('Error: node not found')
+            
+    model = DeepWalk()
+    # model = Node2Vec()
+    model.fit(G)
+
+    embedding = model.get_embedding()
+    
+    return embedding
+
+def file_mapping(project: str):
     """
     Calculate the embedding of the graph
     
     :param project: The name of the project
-    :return: The embedding of the graph, the mapping of the nodes
+    :return: mapping of the nodes
     """
     
     # read in the file structure
@@ -41,28 +71,17 @@ def file_embedding_algo(project: str):
     for edge in edge_list_file:
         nodes.add(edge[0])
         nodes.add(edge[1])
-        
-    # create a graph
-    G = nx.Graph()
 
     node_mapping = dict()
     for i, node in enumerate(nodes):
-        G.add_node(i)
         node_mapping[i] = node
         
-    # add edges to graph
+    edge_list_file_nr = []
     for edge in edge_list_file:
-        try:
-            G.add_edge(list(nodes).index(edge[0]), list(nodes).index(edge[1]))
-        except ValueError:
-            print('Error: node not found')
+        edge_list_file_nr.append([list(nodes).index(edge[0]), list(nodes).index(edge[1])])
             
-    model = DeepWalk()
-    model.fit(G)
-
-    embedding = model.get_embedding()
     
-    return embedding, node_mapping
+    return node_mapping, edge_list_file_nr
 
 def model_embedding_algo(project: str):
     
@@ -107,7 +126,7 @@ def model_embedding_algo(project: str):
                 }
             
     ############################################
-    # add all  connections to the dictionary
+    # add all edges to the dictionary
     ############################################
     
     # add all element connections to the id's
@@ -119,7 +138,7 @@ def model_embedding_algo(project: str):
                     }
                 )
             
-    # add all interface connections to the dictionary
+    # add all interface connections to the dictionary      
     for node in root.iter('interfaceRealization'):
         id_to_name_and_connections[node.attrib['client']]['connections'].append({
                 'from': node.attrib['client'], 
@@ -131,18 +150,17 @@ def model_embedding_algo(project: str):
     # make the embedding
     ############################################
     
-    # model = DeepWalk()
-    model = Node2Vec()
+    model = DeepWalk()
+    # model = Node2Vec()
     # create a graph
     G = nx.Graph()
+    
     
     for name in name_to_number_and_id:
         G.add_node(name_to_number_and_id[name]['count'])
         
         for id in name_to_number_and_id[name]['ids']: # for each type (e.g. class, interface, etc.)
             for connection in id_to_name_and_connections[id]['connections']: # for each connection
-                id_from = connection['from']
-                id_to = connection['to']
                 
                 # look up name that has this id
                 for name in name_to_number_and_id:
@@ -150,6 +168,7 @@ def model_embedding_algo(project: str):
                         name_from = name
                         break
                 
+                # look up name that has this id
                 for name in name_to_number_and_id:
                     if connection['to'] in name_to_number_and_id[name]['ids']:
                         name_to = name
@@ -162,8 +181,13 @@ def model_embedding_algo(project: str):
                 
                 
                 # add the connection to the graph
-                G.add_edge(from_number, to_number)
-        
+                if from_number != to_number: # ? no self loops
+                    G.add_edge(from_number, to_number)
+                
+    # plt.figure(figsize=(12, 8))
+    # nx.draw_networkx(G, with_labels=True)
+    # plt.show()
+    
     model.fit(G)
     embedding = model.get_embedding()
             
@@ -199,13 +223,81 @@ def cosine_similarity(file_embs: list, mod_embs: list):
         
     return best_match
 
-def calculate_accuracy(pair_list: list, file_mapping: dict, model_mapping: dict, project: str):
+def files_groundTruth_overlap(project: str, files: dict):
     
     ground_truth = get_ground_truth(project)
+    
+    # remove all files from ground truth that do not end in .java
+    ground_truth = ground_truth[ground_truth['CodeElementId'].str.endswith('.java')]
+    
+    matching_files = 0
+    matching_files_list = []
+    not_matching_files_list = []
+    for key in files:
+        if files[key] in ground_truth['CodeElementId'].tolist():
+            matching_files_list.append(files[key]) # files that are in the implementation and in the ground truth
+            matching_files += 1
+            
+        else:
+            not_matching_files_list.append(files[key]) # files that are in the implementation but not in the ground truth
+            
+    not_matching_ground_truth = []
+    for file in ground_truth['CodeElementId'].tolist():
+        if file not in matching_files_list:
+            not_matching_ground_truth.append(file) # files that are in the ground truth but not in the implementation
+            
+    # remove all files from ground truth that are not in the implementation
+    ground_truth = ground_truth[ground_truth['CodeElementId'].isin(matching_files_list)]
+    
+    # remove all files from the implementation that are not in the ground truth
+    files = {key: files[key] for key in files if files[key] in ground_truth['CodeElementId'].tolist()}
+            
+    return ground_truth, files
+
+def calculate_accuracy_rmvd(pair_list: list, file_mapping: dict, model_mapping: dict, project: str):
+    
+    # ! calculate precision and recall on the files that are in the ground truth and in the implementation (100% possible)
+    ground_truth, file_mapping = files_groundTruth_overlap(project, file_mapping)
     
     correct = 0
     for pair in pair_list:
         # get all id's that map to this number
+        for key in model_mapping:
+            if model_mapping[key]["count"] == pair[1]:
+                model_ids = model_mapping[key]["ids"] # model_ids: list of ids
+                list_of_files = []
+                # add all CodeElementId of ground truth to list_of_files if ArchitectureElementId == model_ids
+                for model_id in model_ids:
+                    list_of_files.extend(ground_truth[ground_truth['ArchitectureElementId'] == model_id]['CodeElementId'].tolist())
+                continue    
+        
+        if pair[0] in file_mapping:
+            implementation_file = file_mapping[pair[0]]
+        
+            # check if the implementation file is in the list of files
+            for file in list_of_files:
+                if file == implementation_file:
+                    correct += 1
+                    break
+    
+    print(f'\tCorrect (removed): {correct}')
+    print(f'\tTotal files in implementation (removed): {len(file_mapping)}')
+    print(f'\tTotal files in ground truth: {len(ground_truth)}')
+    print(f'\tValid pairs ({round(len(file_mapping)/len(pair_list)*100, 2)}%): {len(file_mapping)}')
+    print(f'\tPrecision (removed): {round(correct / len(file_mapping) * 100, 2)}%')
+    print(f'\tRecall (removed): {round(correct / len(ground_truth) * 100, 2)}%\n')
+    
+    return correct / len(file_mapping),  correct / len(ground_truth)
+
+def calculate_accuracy(pair_list: list, file_mapping: dict, model_mapping: dict, project: str):
+    
+    # ! calculate precision and recall on all files even if they are not even in both
+    ground_truth = get_ground_truth(project)
+    
+    correct = 0
+    # for each pair check if any of the 
+    for pair in pair_list:
+        # get all ids that map to this number
         for key in model_mapping:
             if model_mapping[key]["count"] == pair[1]:
                 model_ids = model_mapping[key]["ids"] # model_ids: list of ids
@@ -222,22 +314,31 @@ def calculate_accuracy(pair_list: list, file_mapping: dict, model_mapping: dict,
                 correct += 1
                 break
     
-    # print(f'\tCorrect: {correct}')
-    # print(f'\tTotal: {len(pair_list)}')
-    print(f'\t\tCurrent Precision: {round(correct / len(pair_list) * 100, 2)}%\n')
+    print(f'\tCorrect: {correct}')
+    print(f'\tTotal files in implementation: {len(pair_list)}')
+    print(f'\tTotal files in ground truth: {len(ground_truth)}')
+    print(f'\tValid pairs ({round(len(pair_list)/len(file_mapping)*100, 2)}%): {len(pair_list)}')
+    print(f'\tPrecision: {round(correct / len(pair_list) * 100, 2)}%')
+    print(f'\tRecall: {round(correct / len(ground_truth) * 100, 2)}%\n')
     
-    # calc recall with how many pairs in ground truth are correctly predicted
-    
-    
-    return correct / len(pair_list)
+    return correct / len(pair_list), correct / len(ground_truth)
+
 
 def evaluate_project(project: str, runs: int):
     
-    sum_accuracy = 0
-    for i in range(runs):
+    sum_precision = 0
+    sum_precision_rmvd = 0
+    sum_recall = 0
+    sum_recall_rmvd = 0
     
-        # file to graph embedding
-        file_embedding, file_mapping = file_embedding_algo(project)
+    # make the mapping between the file to a node number for the graph embedding
+    file_map, file_edge_list = file_mapping(project)
+    
+    for i in range(runs):
+        print(f'\tRun {i+1} --------------------------------------')
+    
+        # run ebmedding algorithm
+        file_embedding = file_embedding_algo(file_map, file_edge_list)
         
         # model to graph embedding
         model_embedding, model_mapping = model_embedding_algo(project)
@@ -246,18 +347,28 @@ def evaluate_project(project: str, runs: int):
         pair_list = cosine_similarity(file_embedding, model_embedding)
         
         # calculate accuracy
-        accurcacy = calculate_accuracy(pair_list, file_mapping, model_mapping, project)
+        precision, recall = calculate_accuracy(pair_list, file_map, model_mapping, project)
         
-        sum_accuracy += accurcacy
+        # calculate accuracy_v2
+        precision_rmvd, recall_rmvd = calculate_accuracy_rmvd(pair_list, file_map, model_mapping, project)
         
-    print(f'\tAverage accuracy: {round((sum_accuracy / runs) * 100, 2)}%')
+        sum_precision += precision
+        sum_precision_rmvd += precision_rmvd
+        sum_recall += recall
+        sum_recall_rmvd += recall_rmvd
+    
+    print('--------------------------------------')    
+    print(f'\t\tAverage precision: {round((sum_precision / runs) * 100, 2)}%')
+    print(f'\t\tAverage recall: {round((sum_recall / runs) * 100, 2)}%')
+    print(f'\t\tAverage precision (removed): {round((sum_precision_rmvd / runs) * 100, 2)}%')
+    print(f'\t\tAverage recall (removed): {round((sum_recall_rmvd / runs) * 100, 2)}%')
     
     
     return
 
 if __name__ == '__main__':
     projects = ['bigbluebutton', 'jabref', 'mediastore', 'teammates', 'teastore']
-    runs = 5 # ? this does not affect the result the way i expect it to
+    runs = 5
     for project in projects:
         print(f'Project: {project}')
         evaluate_project(project, runs)
