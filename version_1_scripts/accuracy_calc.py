@@ -24,7 +24,14 @@ def get_ground_truth(project: str):
     with open(path, 'r') as file:
         df = pd.read_csv(file)
     df['CodeElementId'] = df['CodeElementId'].str.split('/').str[-1]
+    # df = df.drop_duplicates(subset='CodeElementId', keep='first')
     return df
+
+def get_relation(project: str):
+    path = f'models/relations/{project}_relation_dict.json'
+    with open(path, 'r') as file:
+        relation_dict = json.load(file)
+    return relation_dict
         
         
 def calc_accuracy(project: str):
@@ -32,6 +39,8 @@ def calc_accuracy(project: str):
     model_mapping = get_model_mapping(project)
     file_mapping = get_implementation_mapping(project)
     ground_truth = get_ground_truth(project)
+    model_relations = get_relation(project)
+    
     
     correct = 0
     for pair in pairs:

@@ -46,16 +46,22 @@ def node_to_graphs(project):
     for i, node in enumerate(nodes):
         G.add_node(i)
         node_mapping[i] = node
+        
+    # save the edges with file name to a file
+    # with open(f'{save_path}/edges/{project}_edges.json', 'w') as f:
+    #     json.dump(edge_list_file, f)
 
     # save the mapping to a file
-    with open(f'{save_path}/mapping/{project}_node_mapping.json', 'w') as f:
-        json.dump(node_mapping, f)
+    # with open(f'{save_path}/mapping/{project}_node_mapping.json', 'w') as f:
+    #     json.dump(node_mapping, f)
             
 
     # add edges to graph
+    number_edges = []
     for edge in edge_list_file:
         try:
             G.add_edge(list(nodes).index(edge[0]), list(nodes).index(edge[1]))
+            number_edges.append((list(nodes).index(edge[0]), list(nodes).index(edge[1])))
         except ValueError:
             print('Error: node not found')
 
@@ -64,6 +70,9 @@ def node_to_graphs(project):
     model.fit(G)
 
     embedding = model.get_embedding()
+    
+    with open(f'{save_path}/edges_number/{project}_edges.json', 'w') as f:
+        json.dump(number_edges, f)
 
     # save the embedding to a file
     # with open(f'{save_path}/embedding/{project}_embedding.txt', 'w') as f:

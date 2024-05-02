@@ -1,6 +1,5 @@
 import networkx as nx
-from karateclub import DeepWalk
-from karateclub import Node2Vec
+from karateclub import DeepWalk, Node2Vec, Walklets
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,6 +12,8 @@ def get_ground_truth(project: str):
     with open(path, 'r') as file:
         df = pd.read_csv(file)
     df['CodeElementId'] = df['CodeElementId'].str.split('/').str[-1]
+    # ? remove duplicates by keeping the first occurence
+    df = df.drop_duplicates(subset='CodeElementId', keep='first')
     return df
 
 def file_embedding_algo(node_mapping: dict, edge_list_file: list):
@@ -37,7 +38,7 @@ def file_embedding_algo(node_mapping: dict, edge_list_file: list):
         except ValueError:
             print('Error: node not found')
             
-    model = DeepWalk()
+    model = Walklets()
     # model = Node2Vec()
     model.fit(G)
 
@@ -150,7 +151,7 @@ def model_embedding_algo(project: str):
     # make the embedding
     ############################################
     
-    model = DeepWalk()
+    model = Walklets()
     # model = Node2Vec()
     # create a graph
     G = nx.Graph()
