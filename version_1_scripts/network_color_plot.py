@@ -3,7 +3,6 @@ import numpy as np
 import json
 import networkx as nx
 import pandas as pd
-from itertools import count
 
 def get_edges(project: str):
     edges = []
@@ -20,7 +19,10 @@ def get_ground_truth(project: str):
     # only keep entries with .java at the end
     df = df[df['CodeElementId'].str.endswith('.java')]
     # remove duplicates by keeping the first occurence
+    print(project)
+    print(len(df))
     df = df.drop_duplicates(subset='CodeElementId', keep='first')
+    print(len(df))
     return df
 
 def get_implementation_mapping(project: str):
@@ -60,28 +62,31 @@ def group_plot(project: str):
             print('Error: node not found')
             
     color_map = []
+    rmv_nodes = []
     for node in G.nodes:
         # append colormap the color of the specific node
         node_name = implementation_mapping[str(node)]
         if node_name in ground_truth['CodeElementId'].values:
             archID = ground_truth[ground_truth['CodeElementId'] == node_name]['ArchitectureElementId'].values[0]
             color = plt.cm.tab20(modelID_to_colorNr[archID])
+            color_map.append(color)
         else: 
-            color = 'grey'
+            # remove nodes that are not in the ground truth
+            rmv_nodes.append(node)
+    
+    for node in rmv_nodes:
+        G.remove_node(node)
         
-        color_map.append(color)
-    print(len(color_map))
-    print(len(G.nodes))
             
     plt.figure(figsize=(12, 8))
     nx.draw_networkx(G, with_labels=False, font_size=5, node_size=50, node_color=color_map, )
     plt.title(f'{project} - Color grouped by UML node\n(Grey nodes are not in the ground truth)\nEdges are extracted dependencies')
-    plt.show()
+    plt.savefig(f'implementation/extracted_dependencies_graphs/color_mapping/{project}_grouped.png', dpi=300)
     return
 
 if __name__ == '__main__':
     projects = ['bigbluebutton', 'jabref', 'mediastore', 'teammates', 'teastore']
-    # for project in projects:
-    #     group_plot(project)
+    for project in projects:
+        group_plot(project)
     
-    group_plot('mediastore')
+    # group_plot('bigbluebutton')

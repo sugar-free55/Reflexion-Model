@@ -42,9 +42,9 @@ for _, client_id, supplier_id in edges:
         G.add_edge(client_name, supplier_name)
 
 # visualization chart
-plt.figure(figsize=(10,10))
+plt.figure(figsize=(12,8))
 pos = nx.spring_layout(G)
 labels = nx.get_node_attributes(G, 'label')
-nx.draw_networkx(G, pos, with_labels=True, labels=labels, node_size=2000, font_size=10, font_weight='bold', node_color='skyblue',
+nx.draw_networkx(G, pos, with_labels=True, labels=labels, node_size=200, font_size=10, node_color='skyblue',
         edge_color='k')
 plt.show()

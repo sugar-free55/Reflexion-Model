@@ -38,7 +38,7 @@ def file_embedding_algo(node_mapping: dict, edge_list_file: list):
         except ValueError:
             print('Error: node not found')
             
-    model = Walklets()
+    model = DeepWalk()
     # model = Node2Vec()
     model.fit(G)
 
@@ -151,7 +151,7 @@ def model_embedding_algo(project: str):
     # make the embedding
     ############################################
     
-    model = Walklets()
+    model = DeepWalk()
     # model = Node2Vec()
     # create a graph
     G = nx.Graph()
@@ -194,6 +194,15 @@ def model_embedding_algo(project: str):
             
     
     return embedding, name_to_number_and_id
+
+def random_pairs(file_embs: list, mod_embs: list):
+    
+    random_match = []
+    
+    for pos1, vector1 in enumerate(file_embs):
+        random_match.append((pos1, np.random.randint(0, len(mod_embs))))
+    
+    return random_match
 
 def cosine_similarity(file_embs: list, mod_embs: list):
     """
@@ -346,6 +355,7 @@ def evaluate_project(project: str, runs: int):
         
         # calculate cosine similarity
         pair_list = cosine_similarity(file_embedding, model_embedding)
+        # pair_list = random_pairs(file_embedding, model_embedding)
         
         # calculate accuracy
         precision, recall = calculate_accuracy(pair_list, file_map, model_mapping, project)
